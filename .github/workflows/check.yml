@@ -1,4 +1,4 @@
-name: notify
+name: Fumoto checker2
 
 on:
   schedule:
