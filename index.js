@@ -1,35 +1,22 @@
 const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 
-// ==============================
 // LINE
-// ==============================
 const LINE_ACCESS_TOKEN =
   process.env.LINE_ACCESS_TOKEN;
 
 const LINE_USER_ID =
   process.env.LINE_USER_ID;
 
-// ==============================
-// 監視したい日
-// 複数可
-// ==============================
+// 監視日
 const TARGET_DATES = [
-
   "2026-05-09",
   "2026-05-10"
-
 ];
 
-// ==============================
-// API
-// ==============================
-const API_URL =
-  "https://reserve.fumotoppara.net/api/shared/reserve/calendars";
-
-// ==============================
+// =====================================
 // メイン
-// ==============================
+// =====================================
 async function checkAvailability() {
 
   console.log("Chrome起動");
@@ -37,7 +24,6 @@ async function checkAvailability() {
   const browser =
     await puppeteer.launch({
 
-      // Bot判定回避
       headless: "new",
 
       args: [
@@ -45,9 +31,7 @@ async function checkAvailability() {
         "--no-sandbox",
         "--disable-setuid-sandbox",
 
-        "--disable-blink-features=AutomationControlled",
-
-        "--window-size=1280,720"
+        "--disable-blink-features=AutomationControlled"
 
       ]
 
@@ -56,7 +40,6 @@ async function checkAvailability() {
   const page =
     await browser.newPage();
 
-  // 画面サイズ
   await page.setViewport({
 
     width: 1280,
@@ -64,7 +47,6 @@ async function checkAvailability() {
 
   });
 
-  // webdriver隠し
   await page.evaluateOnNewDocument(() => {
 
     Object.defineProperty(
@@ -77,14 +59,48 @@ async function checkAvailability() {
 
   });
 
-  // Chromeっぽくする
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
   );
 
+  // APIレスポンス保存用
+  let apiJson = null;
+
+  // 通信監視
+  page.on("response", async response => {
+
+    const url = response.url();
+
+    if (
+      url.includes(
+        "/api/shared/reserve/calendars"
+      )
+    ) {
+
+      console.log("API検出");
+
+      try {
+
+        apiJson =
+          await response.json();
+
+        console.log("JSON取得成功");
+
+      } catch (e) {
+
+        console.log(
+          "JSON取得失敗",
+          e
+        );
+
+      }
+
+    }
+
+  });
+
   console.log("予約ページアクセス");
 
-  // ページ表示
   await page.goto(
     "https://reserve.fumotoppara.net/reserved/reserved-calendar-list",
     {
@@ -92,71 +108,28 @@ async function checkAvailability() {
     }
   );
 
-  // JS実行待ち
+  // 通信待機
   await new Promise(
-    r => setTimeout(r, 5000)
+    r => setTimeout(r, 10000)
   );
 
-  console.log("API取得");
+  await browser.close();
 
-  // ブラウザ内部fetch
-  const result = await page.evaluate(
-    async (API_URL) => {
+  // API取得失敗
+  if (!apiJson) {
 
-      try {
-
-        const response =
-          await fetch(API_URL);
-
-        const text =
-          await response.text();
-
-        return {
-
-          ok: response.ok,
-          status: response.status,
-          text
-
-        };
-
-      } catch (e) {
-
-        return {
-
-          ok: false,
-          error: e.toString()
-
-        };
-
-      }
-
-    },
-    API_URL
-  );
-
-  console.log(result);
-
-  if (!result.ok) {
-
-    console.log("API失敗");
-
-    await browser.close();
+    console.log(
+      "APIレスポンス取得失敗"
+    );
 
     return;
 
   }
 
-  const json =
-    JSON.parse(result.text);
-
-  await browser.close();
-
   const list =
-    json.calendarsSiteDateList;
+    apiJson.calendarsSiteDateList;
 
-  // ==============================
   // 空き判定
-  // ==============================
   const available = list.filter(item => {
 
     return (
@@ -184,16 +157,13 @@ async function checkAvailability() {
 
   }
 
-  // ==============================
   // 通知文
-  // ==============================
   let message =
     "【ふもとっぱら空き通知】\n\n";
 
   available.forEach(item => {
 
     message +=
-
       `${item.calDate}\n` +
       `残り: ${item.remainCount}\n\n`;
 
@@ -204,9 +174,9 @@ async function checkAvailability() {
 
 }
 
-// ==============================
+// =====================================
 // LINE通知
-// ==============================
+// =====================================
 async function sendLine(message) {
 
   const response = await fetch(
@@ -251,5 +221,4 @@ async function sendLine(message) {
 
 }
 
-// 実行
 checkAvailability();
