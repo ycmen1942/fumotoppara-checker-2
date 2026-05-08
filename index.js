@@ -1,57 +1,80 @@
+const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 
+// LINE
 const LINE_ACCESS_TOKEN =
   process.env.LINE_ACCESS_TOKEN;
 
 const LINE_USER_ID =
   process.env.LINE_USER_ID;
 
+// 監視日
 const TARGET_DATES = [
-  "2026-05-08"
+  "2026-05-09"
 ];
 
+// API
 const API_URL =
   "https://reserve.fumotoppara.net/api/shared/reserve/calendars";
 
+// =====================================
+// メイン
+// =====================================
 async function checkAvailability() {
 
-  console.log("API取得開始");
+  console.log("Chrome起動");
 
-  const response = await fetch(API_URL, {
+  const browser =
+    await puppeteer.launch({
 
-    headers: {
+      headless: true,
 
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox"
+      ]
 
-      "Accept":
-        "application/json, text/plain, */*",
+    });
 
-      "Referer":
-        "https://reserve.fumotoppara.net/reserved/reserved-calendar-list",
+  const page =
+    await browser.newPage();
 
-      "Origin":
-        "https://reserve.fumotoppara.net"
+  // 普通のChromeっぽくする
+  await page.setUserAgent(
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+  );
 
+  console.log("予約ページアクセス");
+
+  // 一度ページ開く
+  await page.goto(
+    "https://reserve.fumotoppara.net/reserved/reserved-calendar-list",
+    {
+      waitUntil: "networkidle2"
     }
+  );
 
-  });
+  console.log("API取得");
 
-  console.log("HTTP:", response.status);
+  // ブラウザ内部でAPI実行
+  const json = await page.evaluate(
+    async (API_URL) => {
 
-  if (!response.ok) {
+      const response =
+        await fetch(API_URL);
 
-    console.log("API失敗");
+      return await response.json();
 
-    return;
+    },
+    API_URL
+  );
 
-  }
-
-  const json = await response.json();
+  await browser.close();
 
   const list =
     json.calendarsSiteDateList;
 
+  // キャンプ宿泊のみ
   const available = list.filter(item => {
 
     return (
@@ -65,7 +88,7 @@ async function checkAvailability() {
 
   });
 
-  console.log(available);
+  console.log("空き検出:", available);
 
   if (available.length === 0) {
 
@@ -90,10 +113,15 @@ async function checkAvailability() {
 
 }
 
+// =====================================
+// LINE通知
+// =====================================
 async function sendLine(message) {
 
   const response = await fetch(
+
     "https://api.line.me/v2/bot/message/push",
+
     {
 
       method: "POST",
@@ -122,10 +150,11 @@ async function sendLine(message) {
       })
 
     }
+
   );
 
   console.log(
-    "LINE:",
+    "LINE Status:",
     response.status
   );
 
