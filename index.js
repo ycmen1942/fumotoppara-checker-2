@@ -57,17 +57,50 @@ async function checkAvailability() {
   console.log("API取得");
 
   // ブラウザ内部でAPI実行
-  const json = await page.evaluate(
-    async (API_URL) => {
+const result = await page.evaluate(
+  async (API_URL) => {
+
+    try {
 
       const response =
         await fetch(API_URL);
 
-      return await response.json();
+      const text =
+        await response.text();
 
-    },
-    API_URL
-  );
+      return {
+        ok: response.ok,
+        status: response.status,
+        text
+      };
+
+    } catch (e) {
+
+      return {
+        ok: false,
+        error: e.toString()
+      };
+
+    }
+
+  },
+  API_URL
+);
+
+console.log(result);
+
+if (!result.ok) {
+
+  console.log("API失敗");
+
+  await browser.close();
+
+  return;
+
+}
+
+const json =
+  JSON.parse(result.text);
 
   await browser.close();
 
