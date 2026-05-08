@@ -1,25 +1,35 @@
 const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 
+// ==============================
 // LINE
+// ==============================
 const LINE_ACCESS_TOKEN =
   process.env.LINE_ACCESS_TOKEN;
 
 const LINE_USER_ID =
   process.env.LINE_USER_ID;
 
-// 監視日
+// ==============================
+// 監視したい日
+// 複数可
+// ==============================
 const TARGET_DATES = [
-  "2026-05-09"
+
+  "2026-05-09",
+  "2026-05-10"
+
 ];
 
+// ==============================
 // API
+// ==============================
 const API_URL =
   "https://reserve.fumotoppara.net/api/shared/reserve/calendars";
 
-// =====================================
+// ==============================
 // メイン
-// =====================================
+// ==============================
 async function checkAvailability() {
 
   console.log("Chrome起動");
@@ -27,11 +37,18 @@ async function checkAvailability() {
   const browser =
     await puppeteer.launch({
 
-      headless: true,
+      // Bot判定回避
+      headless: "new",
 
       args: [
+
         "--no-sandbox",
-        "--disable-setuid-sandbox"
+        "--disable-setuid-sandbox",
+
+        "--disable-blink-features=AutomationControlled",
+
+        "--window-size=1280,720"
+
       ]
 
     });
@@ -39,89 +56,107 @@ async function checkAvailability() {
   const page =
     await browser.newPage();
 
-  // 普通のChromeっぽくする
+  // 画面サイズ
+  await page.setViewport({
+
+    width: 1280,
+    height: 720
+
+  });
+
+  // webdriver隠し
+  await page.evaluateOnNewDocument(() => {
+
+    Object.defineProperty(
+      navigator,
+      "webdriver",
+      {
+        get: () => false
+      }
+    );
+
+  });
+
+  // Chromeっぽくする
   await page.setUserAgent(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
   );
 
   console.log("予約ページアクセス");
 
-  // 一度ページ開く
-await page.goto(
-  "https://reserve.fumotoppara.net/reserved/reserved-calendar-list",
-  {
-    waitUntil: "networkidle2"
-  }
-);
-
-console.log("待機中");
-
-await page.waitForResponse(
-  response =>
-    response.url().includes(
-      "/api/shared/reserve/calendars"
-    ),
-  {
-    timeout: 15000
-  }
-);
-
-console.log("API通信検出");
-
-console.log("API取得");
-
-  // ブラウザ内部でAPI実行
-const result = await page.evaluate(
-  async (API_URL) => {
-
-    try {
-
-      const response =
-        await fetch(API_URL);
-
-      const text =
-        await response.text();
-
-      return {
-        ok: response.ok,
-        status: response.status,
-        text
-      };
-
-    } catch (e) {
-
-      return {
-        ok: false,
-        error: e.toString()
-      };
-
+  // ページ表示
+  await page.goto(
+    "https://reserve.fumotoppara.net/reserved/reserved-calendar-list",
+    {
+      waitUntil: "networkidle2"
     }
+  );
 
-  },
-  API_URL
-);
+  // JS実行待ち
+  await new Promise(
+    r => setTimeout(r, 5000)
+  );
 
-console.log(result);
+  console.log("API取得");
 
-if (!result.ok) {
+  // ブラウザ内部fetch
+  const result = await page.evaluate(
+    async (API_URL) => {
 
-  console.log("API失敗");
+      try {
 
-  await browser.close();
+        const response =
+          await fetch(API_URL);
 
-  return;
+        const text =
+          await response.text();
 
-}
+        return {
 
-const json =
-  JSON.parse(result.text);
+          ok: response.ok,
+          status: response.status,
+          text
+
+        };
+
+      } catch (e) {
+
+        return {
+
+          ok: false,
+          error: e.toString()
+
+        };
+
+      }
+
+    },
+    API_URL
+  );
+
+  console.log(result);
+
+  if (!result.ok) {
+
+    console.log("API失敗");
+
+    await browser.close();
+
+    return;
+
+  }
+
+  const json =
+    JSON.parse(result.text);
 
   await browser.close();
 
   const list =
     json.calendarsSiteDateList;
 
-  // キャンプ宿泊のみ
+  // ==============================
+  // 空き判定
+  // ==============================
   const available = list.filter(item => {
 
     return (
@@ -135,8 +170,12 @@ const json =
 
   });
 
-  console.log("空き検出:", available);
+  console.log(
+    "空き検出:",
+    available
+  );
 
+  // 空きなし
   if (available.length === 0) {
 
     console.log("空きなし");
@@ -145,24 +184,29 @@ const json =
 
   }
 
+  // ==============================
+  // 通知文
+  // ==============================
   let message =
     "【ふもとっぱら空き通知】\n\n";
 
   available.forEach(item => {
 
     message +=
+
       `${item.calDate}\n` +
       `残り: ${item.remainCount}\n\n`;
 
   });
 
+  // LINE通知
   await sendLine(message);
 
 }
 
-// =====================================
+// ==============================
 // LINE通知
-// =====================================
+// ==============================
 async function sendLine(message) {
 
   const response = await fetch(
@@ -207,4 +251,5 @@ async function sendLine(message) {
 
 }
 
+// 実行
 checkAvailability();
