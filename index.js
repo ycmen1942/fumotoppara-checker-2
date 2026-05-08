@@ -47,14 +47,28 @@ async function checkAvailability() {
   console.log("予約ページアクセス");
 
   // 一度ページ開く
-  await page.goto(
-    "https://reserve.fumotoppara.net/reserved/reserved-calendar-list",
-    {
-      waitUntil: "networkidle2"
-    }
-  );
+await page.goto(
+  "https://reserve.fumotoppara.net/reserved/reserved-calendar-list",
+  {
+    waitUntil: "networkidle2"
+  }
+);
 
-  console.log("API取得");
+console.log("待機中");
+
+await page.waitForResponse(
+  response =>
+    response.url().includes(
+      "/api/shared/reserve/calendars"
+    ),
+  {
+    timeout: 15000
+  }
+);
+
+console.log("API通信検出");
+
+console.log("API取得");
 
   // ブラウザ内部でAPI実行
 const result = await page.evaluate(
