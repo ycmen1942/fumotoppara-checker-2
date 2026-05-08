@@ -1,4 +1,4 @@
-name: Fumotoppara checker 2
+name: notify
 
 on:
   schedule:
